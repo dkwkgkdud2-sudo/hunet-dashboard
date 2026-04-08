@@ -23,41 +23,75 @@ def get_headers():
     return {"Authorization": f"Basic {credentials}", "Accept": "application/json"}
 
 
+BOARD_ID = "1333"  # Jira Software 보드 ID
+
 def fetch_issues():
     headers = get_headers()
     headers["Content-Type"] = "application/json"
-    url = f"https://{JIRA_DOMAIN}/rest/api/3/search/jql"
-    fields = ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
 
-    # 시도 1: currentUser() + 운영중 (가장 확실한 방법)
-    jql1 = 'assignee = currentUser() AND status = 운영중 ORDER BY updated DESC'
-    # 시도 2: 특정 ID + 운영중
-    jql2 = f'assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
-    # 시도 3: 프로젝트 포함
-    jql3 = f'project = LZIJ AND status = 운영중 ORDER BY updated DESC'
+    # 방법 1: Agile API로 보드 이슈 직접 조회 (운영중 상태 필터)
+    print(f"🔍 방법 1: Agile API로 보드 {BOARD_ID} 이슈 조회")
+    agile_url = f"https://{JIRA_DOMAIN}/rest/agile/1.0/board/{BOARD_ID}/issue"
+    params = {
+        "jql": "status = 운영중 ORDER BY updated DESC",
+        "maxResults": 100,
+        "fields": "summary,status,priority,updated,duedate,description,comment,labels,assignee"
+    }
+    resp = requests.get(agile_url, headers=headers, params=params, timeout=30)
+    print(f"   응답: {resp.status_code}")
 
-    for i, jql in enumerate([jql1, jql2, jql3], 1):
-        print(f"🔍 시도 {i}: {jql}")
-        payload = {"jql": jql, "maxResults": 100, "fields": fields}
-        resp = requests.post(url, headers=headers, json=payload, timeout=30)
-        print(f"   응답: {resp.status_code}")
+    if resp.ok:
+        data = resp.json()
+        issues = data.get("issues", [])
+        total = data.get("total", 0)
+        print(f"   결과: {len(issues)}건 (전체 {total}건)")
+        if issues:
+            print(f"✅ Agile API 성공! {len(issues)}건 조회 완료")
+            for iss in issues[:3]:
+                print(f"   - {iss['key']}: {iss['fields']['summary'][:50]}")
+            return issues
+    else:
+        print(f"   ❌ 오류: {resp.text[:300]}")
 
-        if resp.ok:
-            data = resp.json()
-            issues = data.get("issues", [])
-            total = data.get("total", 0)
-            print(f"   결과: {len(issues)}건 (전체 {total}건)")
-            if issues:
-                print(f"✅ 시도 {i} 성공! {len(issues)}건 조회 완료")
-                for iss in issues[:3]:
-                    print(f"   - {iss['key']}: {iss['fields']['summary'][:40]}")
-                return issues
-            else:
-                print(f"   ⚠️ 결과 0건 (다음 방법 시도)")
-        else:
-            print(f"   ❌ 오류: {resp.text[:300]}")
+    # 방법 2: Agile API + 담당자 필터
+    print(f"🔍 방법 2: Agile API + 담당자 필터")
+    params["jql"] = f'assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
+    resp = requests.get(agile_url, headers=headers, params=params, timeout=30)
+    print(f"   응답: {resp.status_code}")
 
-    print("⚠️ 모든 JQL 시도 결과 0건 — 빈 대시보드로 생성합니다.")
+    if resp.ok:
+        data = resp.json()
+        issues = data.get("issues", [])
+        total = data.get("total", 0)
+        print(f"   결과: {len(issues)}건 (전체 {total}건)")
+        if issues:
+            print(f"✅ 방법 2 성공! {len(issues)}건 조회 완료")
+            return issues
+    else:
+        print(f"   ❌ 오류: {resp.text[:300]}")
+
+    # 방법 3: 보드 전체 이슈 조회 후 상태명 확인
+    print(f"🔍 방법 3: 보드 전체 이슈 5건 조회 (상태명 확인용)")
+    params_debug = {
+        "maxResults": 5,
+        "fields": "summary,status,assignee"
+    }
+    resp = requests.get(agile_url, headers=headers, params=params_debug, timeout=30)
+    print(f"   응답: {resp.status_code}")
+
+    if resp.ok:
+        data = resp.json()
+        issues_sample = data.get("issues", [])
+        total = data.get("total", 0)
+        print(f"   보드 전체 이슈 수: {total}건")
+        for iss in issues_sample:
+            status_name = iss['fields']['status']['name']
+            summary = iss['fields']['summary'][:40]
+            print(f"   - [{status_name}] {summary}")
+    else:
+        print(f"   ❌ 오류: {resp.text[:300]}")
+
+    print("⚠️ 모든 방법 실패 — 빈 대시보드로 생성합니다.")
     return []
 
 
