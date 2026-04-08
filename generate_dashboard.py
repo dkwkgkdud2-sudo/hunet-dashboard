@@ -35,17 +35,10 @@ def fetch_issues():
 
     print(f"🔍 Jira 검색 중... JQL: {jql}")
 
-    # v3 API 시도
-    url_v3 = f"https://{JIRA_DOMAIN}/rest/api/3/search"
-    resp = requests.post(url_v3, headers=headers, json=payload, timeout=30)
-    print(f"v3 API 응답: {resp.status_code}")
-
-    # v3 실패 시 v2 API 시도
-    if not resp.ok:
-        print(f"v3 실패({resp.status_code}), v2 시도 중...")
-        url_v2 = f"https://{JIRA_DOMAIN}/rest/api/2/search"
-        resp = requests.post(url_v2, headers=headers, json=payload, timeout=30)
-        print(f"v2 API 응답: {resp.status_code}")
+    # 신규 API 엔드포인트 사용 (Atlassian 마이그레이션 정책 반영)
+    url = f"https://{JIRA_DOMAIN}/rest/api/3/search/jql"
+    resp = requests.post(url, headers=headers, json=payload, timeout=30)
+    print(f"API 응답: {resp.status_code}")
 
     if not resp.ok:
         print(f"오류 내용: {resp.text[:500]}")
