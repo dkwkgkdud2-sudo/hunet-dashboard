@@ -25,14 +25,32 @@ def get_headers():
 
 def fetch_issues():
     jql = f'assignee = "{ASSIGNEE_ID}" AND status = "운영중" ORDER BY updated DESC'
-    url = f"https://{JIRA_DOMAIN}/rest/api/3/search"
-    params = {
-        "jql": jql,
-        "maxResults": 100,
-        "fields": "summary,status,priority,updated,duedate,description,comment,labels"
-    }
-    resp = requests.get(url, headers=get_headers(), params=params, timeout=30)
-    resp.raise_for_status()
+    fields = ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
+
+    headers = get_headers()
+    headers["Content-Type"] = "application/json"
+
+    # POST 방식으로 호출 (한글 JQL 처리에 안정적)
+    payload = {"jql": jql, "maxResults": 100, "fields": fields}
+
+    print(f"🔍 Jira 검색 중... JQL: {jql}")
+
+    # v3 API 시도
+    url_v3 = f"https://{JIRA_DOMAIN}/rest/api/3/search"
+    resp = requests.post(url_v3, headers=headers, json=payload, timeout=30)
+    print(f"v3 API 응답: {resp.status_code}")
+
+    # v3 실패 시 v2 API 시도
+    if not resp.ok:
+        print(f"v3 실패({resp.status_code}), v2 시도 중...")
+        url_v2 = f"https://{JIRA_DOMAIN}/rest/api/2/search"
+        resp = requests.post(url_v2, headers=headers, json=payload, timeout=30)
+        print(f"v2 API 응답: {resp.status_code}")
+
+    if not resp.ok:
+        print(f"오류 내용: {resp.text[:500]}")
+        resp.raise_for_status()
+
     issues = resp.json().get("issues", [])
     print(f"✅ 운영중 프로젝트 {len(issues)}건 조회 완료")
     return issues
