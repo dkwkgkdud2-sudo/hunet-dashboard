@@ -23,75 +23,73 @@ def get_headers():
     return {"Authorization": f"Basic {credentials}", "Accept": "application/json"}
 
 
-BOARD_ID = "1333"  # Jira Software 보드 ID
-
 def fetch_issues():
     headers = get_headers()
     headers["Content-Type"] = "application/json"
 
-    # 방법 1: Agile API로 보드 이슈 직접 조회 (운영중 상태 필터)
-    print(f"🔍 방법 1: Agile API로 보드 {BOARD_ID} 이슈 조회")
-    agile_url = f"https://{JIRA_DOMAIN}/rest/agile/1.0/board/{BOARD_ID}/issue"
-    params = {
-        "jql": "status = 운영중 ORDER BY updated DESC",
-        "maxResults": 100,
-        "fields": "summary,status,priority,updated,duedate,description,comment,labels,assignee"
-    }
-    resp = requests.get(agile_url, headers=headers, params=params, timeout=30)
-    print(f"   응답: {resp.status_code}")
-
-    if resp.ok:
-        data = resp.json()
-        issues = data.get("issues", [])
-        total = data.get("total", 0)
-        print(f"   결과: {len(issues)}건 (전체 {total}건)")
-        if issues:
-            print(f"✅ Agile API 성공! {len(issues)}건 조회 완료")
-            for iss in issues[:3]:
-                print(f"   - {iss['key']}: {iss['fields']['summary'][:50]}")
-            return issues
+    # 0단계: 인증 사용자 확인
+    print("🔐 인증 사용자 확인 중...")
+    me_resp = requests.get(f"https://{JIRA_DOMAIN}/rest/api/3/myself", headers=headers, timeout=30)
+    print(f"   응답: {me_resp.status_code}")
+    if me_resp.ok:
+        me = me_resp.json()
+        print(f"   ✅ 인증 성공! 사용자: {me.get('displayName')} ({me.get('emailAddress')})")
+        print(f"   accountId: {me.get('accountId')}")
     else:
-        print(f"   ❌ 오류: {resp.text[:300]}")
+        print(f"   ❌ 인증 실패: {me_resp.text[:200]}")
+        print("   → GitHub Secret(JIRA_EMAIL, JIRA_TOKEN) 값을 확인해주세요!")
+        return []
 
-    # 방법 2: Agile API + 담당자 필터
-    print(f"🔍 방법 2: Agile API + 담당자 필터")
-    params["jql"] = f'assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
-    resp = requests.get(agile_url, headers=headers, params=params, timeout=30)
-    print(f"   응답: {resp.status_code}")
-
-    if resp.ok:
-        data = resp.json()
-        issues = data.get("issues", [])
-        total = data.get("total", 0)
-        print(f"   결과: {len(issues)}건 (전체 {total}건)")
-        if issues:
-            print(f"✅ 방법 2 성공! {len(issues)}건 조회 완료")
-            return issues
-    else:
-        print(f"   ❌ 오류: {resp.text[:300]}")
-
-    # 방법 3: 보드 전체 이슈 조회 후 상태명 확인
-    print(f"🔍 방법 3: 보드 전체 이슈 5건 조회 (상태명 확인용)")
-    params_debug = {
+    # 1단계: 필터 없이 전체 이슈 5건 조회 (상태명 확인)
+    print("\n📋 전체 이슈 샘플 조회 (상태명 확인용)...")
+    search_url = f"https://{JIRA_DOMAIN}/rest/api/3/search/jql"
+    sample_payload = {
+        "jql": "ORDER BY updated DESC",
         "maxResults": 5,
-        "fields": "summary,status,assignee"
+        "fields": ["summary", "status", "assignee", "project"]
     }
-    resp = requests.get(agile_url, headers=headers, params=params_debug, timeout=30)
-    print(f"   응답: {resp.status_code}")
+    resp = requests.post(search_url, headers=headers, json=sample_payload, timeout=30)
+    print(f"   응답: {resp.status_code}, 전체: {resp.json().get('total', 0)}건")
+    statuses_found = set()
+    for iss in resp.json().get("issues", []):
+        sname = iss['fields']['status']['name']
+        pkey = iss['fields']['project']['key']
+        statuses_found.add(sname)
+        print(f"   - [{pkey}][{sname}] {iss['fields']['summary'][:40]}")
+    print(f"   발견된 상태명: {statuses_found}")
 
-    if resp.ok:
-        data = resp.json()
-        issues_sample = data.get("issues", [])
-        total = data.get("total", 0)
-        print(f"   보드 전체 이슈 수: {total}건")
-        for iss in issues_sample:
-            status_name = iss['fields']['status']['name']
-            summary = iss['fields']['summary'][:40]
-            print(f"   - [{status_name}] {summary}")
+    # 2단계: 발견된 상태명 중 운영중과 유사한 것으로 재시도
+    target_statuses = ["운영중", "운영 중", "In Progress", "진행중", "진행 중"]
+    found_status = None
+    for s in statuses_found:
+        for t in target_statuses:
+            if t in s or s in t:
+                found_status = s
+                break
+
+    if found_status:
+        print(f"\n🔍 상태 '{found_status}'로 최종 조회...")
     else:
-        print(f"   ❌ 오류: {resp.text[:300]}")
+        # 그냥 운영중으로 시도
+        found_status = "운영중"
+        print(f"\n🔍 기본값 '{found_status}'로 조회 시도...")
 
-    print("⚠️ 모든 방법 실패 — 빈 대시보드로 생성합니다.")
+    final_payload = {
+        "jql": f'status = "{found_status}" ORDER BY updated DESC',
+        "maxResults": 100,
+        "fields": ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
+    }
+    final_resp = requests.post(search_url, headers=headers, json=final_payload, timeout=30)
+    print(f"   응답: {final_resp.status_code}")
+    if final_resp.ok:
+        issues = final_resp.json().get("issues", [])
+        total = final_resp.json().get("total", 0)
+        print(f"   결과: {len(issues)}건 (전체 {total}건)")
+        if issues:
+            print(f"✅ 성공! {len(issues)}건 조회 완료")
+            return issues
+
+    print("\n⚠️ 조회 실패 — 빈 대시보드로 생성합니다.")
     return []
 
 
