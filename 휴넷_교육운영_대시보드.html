@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>휴넷 교육운영 대시보드</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, 'Noto Sans KR', sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            min-height: 100vh;
+        }
+
+        /* 헤더 */
+        .header {
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d6a9f 100%);
+            color: white;
+            padding: 18px 30px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .header-left h1 { font-size: 19px; font-weight: 700; }
+        .header-left p { font-size: 12px; opacity: 0.75; margin-top: 3px; }
+        .header-right { display: flex; align-items: center; gap: 10px; }
+        .last-updated { background: rgba(255,255,255,0.15); padding: 5px 12px; border-radius: 20px; font-size: 11px; }
+        .refresh-btn {
+            background: rgba(255,255,255,0.2);
+            border: 1px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .refresh-btn:hover { background: rgba(255,255,255,0.3); }
+
+        /* 로딩 */
+        .loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 300px;
+            gap: 16px;
+        }
+        .spinner {
+            width: 40px; height: 40px;
+            border: 4px solid #e5e7eb;
+            border-top-color: #2d6a9f;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading p { color: #666; font-size: 14px; }
+
+        /* 에러 */
+        .error-box {
+            margin: 30px;
+            background: #fff3f3;
+            border: 1px solid #fca5a5;
+            border-radius: 12px;
+            padding: 24px;
+            text-align: center;
+        }
+        .error-box h3 { color: #dc2626; margin-bottom: 10px; }
+        .error-box p { color: #666; font-size: 13px; line-height: 1.6; }
+
+        /* 탭 네비게이션 */
+        .tab-nav {
+            background: white;
+            padding: 0 20px;
+            display: flex;
+            gap: 0;
+            overflow-x: auto;
+            border-bottom: 2px solid #e5e7eb;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+        .tab-btn {
+            padding: 13px 18px;
+            border: none;
+            background: none;
+            cursor: pointer;
+            font-size: 13px;
+            color: #666;
+            white-space: nowrap;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-btn:hover { color: #2d6a9f; background: #f8f9ff; }
+        .tab-btn.active { color: #1e3a5f; font-weight: 600; border-bottom-color: #2d6a9f; }
+
+        /* D-day */
+        .dday {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 700;
+        }
+        .dday-over { background: #fee2e2; color: #dc2626; }
+        .dday-today { background: #fef3c7; color: #d97706; animation: pulse 1s infinite; }
+        .dday-soon { background: #fef3c7; color: #d97706; }
+        .dday-normal { background: #dbeafe; color: #2563eb; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.6} }
+
+        /* 탭 컨텐츠 */
+        .tab-content { display: none; padding: 22px 28px; }
+        .tab-content.active { display: block; }
+
+        /* 프로젝트 헤더 */
+        .project-header {
+            background: white;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 18px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            border-left: 4px solid #2d6a9f;
+        }
+        .project-title-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .project-title { font-size: 17px; font-weight: 700; color: #1e3a5f; }
+        .jira-link {
+            color: #2d6a9f;
+            text-decoration: none;
+            font-size: 12px;
+            padding: 4px 10px;
+            border: 1px solid #2d6a9f;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .jira-link:hover { background: #2d6a9f; color: white; }
+        .project-meta { display: flex; gap: 14px; flex-wrap: wrap; }
+        .meta-item { font-size: 12px; color: #555; }
+        .labels { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .label { background: #e0f0ff; color: #1e6fb0; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+
+        /* 카드 그리드 */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 18px 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+        }
+        .card.full-width { grid-column: 1 / -1; }
+        .card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #1e3a5f;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #f0f2f5;
+        }
+        .description-text { font-size: 13px; line-height: 1.7; color: #555; }
+
+        /* 댓글 */
+        .comment-item {
+            border-left: 3px solid #dbeafe;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            background: #f8fbff;
+            border-radius: 0 8px 8px 0;
+        }
+        .comment-meta { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+        .comment-author { font-size: 12px; font-weight: 600; color: #2d6a9f; }
+        .comment-date { font-size: 11px; color: #999; }
+        .comment-body { font-size: 12px; color: #555; line-height: 1.5; }
+        .empty-text { font-size: 13px; color: #bbb; text-align: center; padding: 24px; }
+
+        /* 메일 플레이스홀더 */
+        .mail-placeholder {
+            text-align: center;
+            padding: 28px;
+            color: #aaa;
+            border: 2px dashed #e5e7eb;
+            border-radius: 10px;
+        }
+        .mail-icon { font-size: 34px; margin-bottom: 10px; }
+        .mail-placeholder p { font-size: 13px; }
+        .mail-sub { font-size: 12px; margin-top: 4px; color: #bbb; }
+
+        /* 운영 인사이트 */
+        .ops-insight { border-top: 3px solid #f59e0b; }
+        .insight-content { color: #555; font-size: 13px; line-height: 1.8; }
+        .insight-list { list-style: none; margin-top: 10px; }
+        .insight-list li {
+            padding: 8px 12px;
+            margin-bottom: 6px;
+            background: #fffbeb;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #78350f;
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+        .insight-list li::before { content: "💡"; flex-shrink: 0; }
+
+        /* 뱃지 */
+        .badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 6px;
+        }
+        .badge-pending { background: #fef3c7; color: #92400e; }
+        .badge-daily { background: #d1fae5; color: #065f46; }
+        .badge-live { background: #dbeafe; color: #1e40af; }
+
+        /* 통계 바 */
+        .stats-bar {
+            background: white;
+            padding: 12px 28px;
+            display: flex;
+            gap: 24px;
+            border-bottom: 1px solid #e5e7eb;
+            font-size: 12px;
+            color: #666;
+        }
+        .stat-item { display: flex; align-items: center; gap: 6px; }
+        .stat-num { font-weight: 700; color: #1e3a5f; font-size: 15px; }
+
+        @media (max-width: 768px) {
+            .content-grid { grid-template-columns: 1fr; }
+            .tab-content { padding: 14px; }
+            .header { flex-direction: column; gap: 10px; align-items: flex-start; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <div class="header-left">
+        <h1>🎓 휴넷 교육운영 대시보드</h1>
+        <p>하이브리드러닝운영팀 · 담당자: 김하영 PM</p>
+    </div>
+    <div class="header-right">
+        <span class="last-updated" id="lastUpdated">로딩 중...</span>
+        <button class="refresh-btn" onclick="loadDashboard()">🔄 새로고침</button>
+    </div>
+</div>
+
+<div id="statsBar" class="stats-bar" style="display:none">
+    <div class="stat-item">📋 운영중 프로젝트 <span class="stat-num" id="totalCount">0</span>건</div>
+    <div class="stat-item">⚠️ 마감 임박(7일 이내) <span class="stat-num" id="urgentCount">0</span>건</div>
+    <div class="stat-item">🔄 오늘 업데이트 <span class="stat-num" id="todayCount">0</span>건</div>
+</div>
+
+<div id="mainContent">
+    <div class="loading">
+        <div class="spinner"></div>
+        <p>Jira에서 운영중 프로젝트를 불러오는 중...</p>
+    </div>
+</div>
+
+<script>
+// ============ 설정 ============
+const CONFIG = {
+    domain: 'ihunet.atlassian.net',
+    email: 'hunet1746@hunet.co.kr',
+    token: 'ATATT3xFfGF0-DYHzUK3ScKxl0x3-i3X_n8waRWljXwgS6aokxCFzpHhPfAuV0ppSIX1NCL7QEqgDwE1jgABS0LQERYe0AZVOoB4sft5GWT1SyIqH8MvCTXJK8SXzQOJeY80XyIdngL2IfmJ1iRY8Z1Yk8_ZdwD8jK1__aeSuFEX4DzxvXmXfs8=88B2B4A7',
+    assigneeId: '712020:fe080e9d-2ca8-4503-aecf-1038752788c7'
+};
+// ==============================
+
+function getAuthHeader() {
+    return 'Basic ' + btoa(`${CONFIG.email}:${CONFIG.token}`);
+}
+
+function getDday(dueDateStr) {
+    if (!dueDateStr) return null;
+    const due = new Date(dueDateStr);
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    due.setHours(0,0,0,0);
+    return Math.round((due - today) / (1000 * 60 * 60 * 24));
+}
+
+function getDdayBadge(dday) {
+    if (dday === null) return '';
+    if (dday < 0) return `<span class="dday dday-over">D+${Math.abs(dday)}</span>`;
+    if (dday === 0) return `<span class="dday dday-today">D-Day!</span>`;
+    if (dday <= 7) return `<span class="dday dday-soon">D-${dday}</span>`;
+    return `<span class="dday dday-normal">D-${dday}</span>`;
+}
+
+function parseADF(node) {
+    if (!node) return '';
+    if (node.type === 'text') return node.text || '';
+    if (node.content) return node.content.map(parseADF).join(' ');
+    return '';
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return dateStr.substring(0, 10);
+}
+
+function isToday(dateStr) {
+    if (!dateStr) return false;
+    return dateStr.substring(0, 10) === new Date().toISOString().substring(0, 10);
+}
+
+async function fetchJiraIssues() {
+    const jql = `assignee = "${CONFIG.assigneeId}" AND status = "운영중" ORDER BY updated DESC`;
+    const fields = 'summary,status,priority,updated,duedate,description,comment,labels';
+    const url = `https://${CONFIG.domain}/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=100&fields=${fields}`;
+
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': getAuthHeader(),
+            'Accept': 'application/json'
+        }
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Jira API 오류 ${response.status}: ${errorText}`);
+    }
+
+    return await response.json();
+}
+
+function generateInsights(issue) {
+    const fields = issue.fields;
+    const insights = [];
+    const dday = getDday(fields.duedate);
+    const comments = fields.comment?.comments || [];
+    const lastComment = comments[comments.length - 1];
+
+    if (dday !== null && dday <= 3 && dday >= 0) {
+        insights.push(`마감 ${dday === 0 ? '오늘' : dday + '일 전'}입니다. 강사/고객사 최종 확인 및 현장 준비사항을 점검해보세요.`);
+    }
+    if (dday !== null && dday < 0) {
+        insights.push(`마감일이 ${Math.abs(dday)}일 지났습니다. 사후 처리 및 결과보고서 준비가 필요합니다.`);
+    }
+    if (lastComment) {
+        const lastCommentDate = new Date(lastComment.created);
+        const daysSince = Math.floor((new Date() - lastCommentDate) / (1000 * 60 * 60 * 24));
+        if (daysSince >= 3) {
+            insights.push(`마지막 소통이 ${daysSince}일 전입니다. 강사 또는 고객사에 진행 상황 확인 메일을 보내보는 건 어떨까요?`);
+        }
+    }
+    if (comments.length === 0) {
+        insights.push('아직 소통 기록이 없습니다. 강사/고객사 첫 연락 및 오리엔테이션 일정 공유를 준비해보세요.');
+    }
+    if (dday !== null && dday >= 7 && dday <= 14) {
+        insights.push('교육 2주 전입니다. 사전 안내자료, 참석자 명단, 장소 확인 등을 점검할 시기예요.');
+    }
+
+    return insights;
+}
+
+function renderDashboard(issues) {
+    if (issues.length === 0) {
+        document.getElementById('mainContent').innerHTML = `
+            <div class="error-box" style="background:#f0f9ff;border-color:#bae6fd;">
+                <h3 style="color:#0284c7;">📋 운영중 프로젝트 없음</h3>
+                <p>현재 "운영중" 상태의 프로젝트가 없거나, Jira 필터 조건을 확인해보세요.</p>
+            </div>`;
+        return;
+    }
+
+    // 통계
+    const urgentCount = issues.filter(i => { const d = getDday(i.fields.duedate); return d !== null && d <= 7 && d >= 0; }).length;
+    const todayCount = issues.filter(i => isToday(i.fields.updated)).length;
+    document.getElementById('totalCount').textContent = issues.length;
+    document.getElementById('urgentCount').textContent = urgentCount;
+    document.getElementById('todayCount').textContent = todayCount;
+    document.getElementById('statsBar').style.display = 'flex';
+
+    let tabButtons = '';
+    let tabContents = '';
+
+    issues.forEach((issue, i) => {
+        const f = issue.fields;
+        const dday = getDday(f.duedate);
+        const ddayBadge = getDdayBadge(dday);
+        const isActive = i === 0 ? 'active' : '';
+        const shortName = f.summary.length > 18 ? f.summary.substring(0, 18) + '…' : f.summary;
+
+        tabButtons += `<button class="tab-btn ${isActive}" onclick="showTab(${i})" title="${f.summary}">${shortName} ${ddayBadge}</button>\n`;
+
+        // 댓글
+        const comments = f.comment?.comments || [];
+        const recentComments = comments.slice(-3).reverse();
+        let commentsHTML = recentComments.length > 0
+            ? recentComments.map(c => `
+                <div class="comment-item">
+                    <div class="comment-meta">
+                        <span class="comment-author">👤 ${c.author?.displayName || '알 수 없음'}</span>
+                        <span class="comment-date">${formatDate(c.created)}</span>
+                    </div>
+                    <p class="comment-body">${parseADF(c.body).substring(0, 200)}</p>
+                </div>`).join('')
+            : '<p class="empty-text">소통 기록 없음</p>';
+
+        // 라벨
+        const labelsHTML = (f.labels || []).map(l => `<span class="label">${l}</span>`).join('');
+
+        // 설명
+        const description = parseADF(f.description);
+
+        // 운영 인사이트
+        const insights = generateInsights(issue);
+        const insightHTML = insights.length > 0
+            ? `<ul class="insight-list">${insights.map(i => `<li>${i}</li>`).join('')}</ul>`
+            : '<p class="insight-content" style="color:#bbb">메일 API 연동 후 더 정밀한 운영 인사이트를 제공합니다.</p>';
+
+        tabContents += `
+        <div class="tab-content ${isActive}" id="tab-${i}">
+            <div class="project-header">
+                <div class="project-title-row">
+                    <h2 class="project-title">${f.summary}</h2>
+                    <a href="https://${CONFIG.domain}/browse/${issue.key}" target="_blank" class="jira-link">🔗 Jira 보기</a>
+                </div>
+                <div class="project-meta">
+                    <span class="meta-item">📌 ${issue.key}</span>
+                    <span class="meta-item">🔄 업데이트: ${formatDate(f.updated)}</span>
+                    <span class="meta-item">📅 마감: ${f.duedate || '미설정'} ${ddayBadge}</span>
+                    <span class="meta-item">⚡ ${f.priority?.name || '-'}</span>
+                    <span class="meta-item">💬 댓글 ${comments.length}건</span>
+                </div>
+                ${labelsHTML ? `<div class="labels">${labelsHTML}</div>` : ''}
+            </div>
+
+            <div class="content-grid">
+                <div class="card">
+                    <div class="card-title">📋 업무 개요</div>
+                    <p class="description-text">${description ? description.substring(0, 400) : '내용 없음'}</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-title">💬 최근 소통 (Jira 댓글)</div>
+                    <div class="comments-list">${commentsHTML}</div>
+                </div>
+
+                <div class="card full-width">
+                    <div class="card-title">📧 메일 소통 현황 <span class="badge badge-pending">연동 예정</span></div>
+                    <div class="mail-placeholder">
+                        <div class="mail-icon">📧</div>
+                        <p>메일 API 연동 후 강사 · 고객사 최신 소통 내용이 자동으로 표시됩니다</p>
+                        <p class="mail-sub">발신자별 · 최신순으로 요약 제공 예정</p>
+                    </div>
+                </div>
+
+                <div class="card full-width ops-insight">
+                    <div class="card-title">💡 오늘의 운영 포인트 <span class="badge badge-daily">일 1회 갱신</span></div>
+                    ${insightHTML}
+                </div>
+            </div>
+        </div>`;
+    });
+
+    document.getElementById('mainContent').innerHTML = `
+        <div class="tab-nav" id="tabNav">${tabButtons}</div>
+        <div id="tabWrapper">${tabContents}</div>`;
+}
+
+function showTab(index) {
+    document.querySelectorAll('.tab-btn').forEach((btn, i) => btn.classList.toggle('active', i === index));
+    document.querySelectorAll('.tab-content').forEach((content, i) => content.classList.toggle('active', i === index));
+}
+
+async function loadDashboard() {
+    document.getElementById('lastUpdated').textContent = '로딩 중...';
+    document.getElementById('statsBar').style.display = 'none';
+    document.getElementById('mainContent').innerHTML = `
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Jira에서 운영중 프로젝트를 불러오는 중...</p>
+        </div>`;
+
+    try {
+        const data = await fetchJiraIssues();
+        renderDashboard(data.issues || []);
+        const now = new Date().toLocaleString('ko-KR', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
+        document.getElementById('lastUpdated').textContent = `🔄 ${now} 업데이트`;
+    } catch (err) {
+        document.getElementById('statsBar').style.display = 'none';
+        document.getElementById('mainContent').innerHTML = `
+            <div class="error-box">
+                <h3>⚠️ 연결 오류</h3>
+                <p>Jira에 연결할 수 없습니다.<br><br>
+                <strong>가능한 원인:</strong><br>
+                • 로컬 파일로 열었을 때 CORS 정책으로 차단될 수 있어요<br>
+                • 해결 방법: Chrome에서 파일을 열 때 아래 방법을 사용해보세요<br><br>
+                <code style="background:#f5f5f5;padding:4px 8px;border-radius:4px">chrome --disable-web-security --user-data-dir=/tmp/chrome_dev</code><br><br>
+                또는 <strong>VS Code Live Server</strong>나 <strong>GitHub Pages</strong>에 올려서 사용하시면 됩니다.<br><br>
+                오류 내용: ${err.message}</p>
+            </div>`;
+        document.getElementById('lastUpdated').textContent = '연결 실패';
+    }
+}
+
+// 자동 새로고침 (1시간마다)
+loadDashboard();
+setInterval(loadDashboard, 60 * 60 * 1000);
+</script>
+
+</body>
+</html>
