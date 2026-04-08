@@ -24,30 +24,41 @@ def get_headers():
 
 
 def fetch_issues():
-    # URL에서 확인된 정확한 조건: 프로젝트 LZIJ + 담당자 + 운영중 상태
-    jql = f'project = LZIJ AND assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
-    fields = ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
-
     headers = get_headers()
     headers["Content-Type"] = "application/json"
-
-    # POST 방식으로 호출 (한글 JQL 처리에 안정적)
-    payload = {"jql": jql, "maxResults": 100, "fields": fields}
-
-    print(f"🔍 Jira 검색 중... JQL: {jql}")
-
-    # 신규 API 엔드포인트 사용 (Atlassian 마이그레이션 정책 반영)
     url = f"https://{JIRA_DOMAIN}/rest/api/3/search/jql"
-    resp = requests.post(url, headers=headers, json=payload, timeout=30)
-    print(f"API 응답: {resp.status_code}")
+    fields = ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
 
-    if not resp.ok:
-        print(f"오류 내용: {resp.text[:500]}")
-        resp.raise_for_status()
+    # 시도 1: currentUser() + 운영중 (가장 확실한 방법)
+    jql1 = 'assignee = currentUser() AND status = 운영중 ORDER BY updated DESC'
+    # 시도 2: 특정 ID + 운영중
+    jql2 = f'assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
+    # 시도 3: 프로젝트 포함
+    jql3 = f'project = LZIJ AND status = 운영중 ORDER BY updated DESC'
 
-    issues = resp.json().get("issues", [])
-    print(f"✅ 운영중 프로젝트 {len(issues)}건 조회 완료")
-    return issues
+    for i, jql in enumerate([jql1, jql2, jql3], 1):
+        print(f"🔍 시도 {i}: {jql}")
+        payload = {"jql": jql, "maxResults": 100, "fields": fields}
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        print(f"   응답: {resp.status_code}")
+
+        if resp.ok:
+            data = resp.json()
+            issues = data.get("issues", [])
+            total = data.get("total", 0)
+            print(f"   결과: {len(issues)}건 (전체 {total}건)")
+            if issues:
+                print(f"✅ 시도 {i} 성공! {len(issues)}건 조회 완료")
+                for iss in issues[:3]:
+                    print(f"   - {iss['key']}: {iss['fields']['summary'][:40]}")
+                return issues
+            else:
+                print(f"   ⚠️ 결과 0건 (다음 방법 시도)")
+        else:
+            print(f"   ❌ 오류: {resp.text[:300]}")
+
+    print("⚠️ 모든 JQL 시도 결과 0건 — 빈 대시보드로 생성합니다.")
+    return []
 
 
 def parse_adf(node):
