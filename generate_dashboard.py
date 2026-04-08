@@ -24,7 +24,8 @@ def get_headers():
 
 
 def fetch_issues():
-    jql = f'assignee = "{ASSIGNEE_ID}" AND status = "운영중" ORDER BY updated DESC'
+    # URL에서 확인된 정확한 조건: 프로젝트 LZIJ + 담당자 + 운영중 상태
+    jql = f'project = LZIJ AND assignee = "{ASSIGNEE_ID}" AND status = 운영중 ORDER BY updated DESC'
     fields = ["summary", "status", "priority", "updated", "duedate", "description", "comment", "labels"]
 
     headers = get_headers()
