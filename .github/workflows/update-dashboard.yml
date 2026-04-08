@@ -1,0 +1,36 @@
+name: 교육운영 대시보드 자동 업데이트
+
+on:
+  schedule:
+    - cron: '0 * * * *'   # 매 1시간마다 자동 실행
+  workflow_dispatch:        # 수동 실행 버튼도 생김
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 불러오기
+        uses: actions/checkout@v3
+
+      - name: Python 설정
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 필요 패키지 설치
+        run: pip install requests
+
+      - name: 대시보드 생성
+        env:
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_TOKEN: ${{ secrets.JIRA_TOKEN }}
+        run: python generate_dashboard.py
+
+      - name: 변경사항 저장 및 배포
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add 휴넷_교육운영_대시보드.html
+          git diff --staged --quiet || git commit -m "대시보드 자동 업데이트 $(date '+%Y-%m-%d %H:%M')"
+          git push
